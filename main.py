@@ -1,10 +1,9 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Optional
+from typing import List
 import os
 import shutil
 import tempfile
-import json
 from pipeline import process_resumes
 
 app = FastAPI(title="Resume ATS Pipeline API")
@@ -21,17 +20,8 @@ app.add_middleware(
 @app.post("/api/score")
 async def score_candidates(
     jd_file: UploadFile = File(...),
-    resume_files: List[UploadFile] = File(...),
-    weights: Optional[str] = Form(None)
+    resume_files: List[UploadFile] = File(...)
 ):
-    # Parse weights if provided
-    user_weights = None
-    if weights:
-        try:
-            user_weights = json.loads(weights)
-        except Exception:
-            pass
-
     if not jd_file.filename:
         raise HTTPException(status_code=400, detail="JD File missing")
     if not resume_files or len(resume_files) == 0:
@@ -54,7 +44,7 @@ async def score_candidates(
             
         # Run Pipeline
         try:
-            results = process_resumes(jd_path, resume_paths, user_weights=user_weights)
+            results = process_resumes(jd_path, resume_paths)
             return {"status": "success", "data": results}
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
