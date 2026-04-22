@@ -10,16 +10,15 @@ function App() {
   const [success, setSuccess] = useState('')
   
   // Dynamic weightage configuration
+  // Dynamic weightage configuration aligned with backend
   const [weightage, setWeightage] = useState({
-    skillMatching: 30,
-    semanticSimilarity: 20,
-    experience: 20,
+    required_skills: 30,
+    semantic: 15,
+    reranker: 15,
+    experience: 15,
     education: 10,
-    projects: 5,
-    certifications: 5,
-    domainMatch: 5,
-    locationPreference: 5,
-    technicalSkillsCount: 5
+    projects: 10,
+    evidence: 5
   })
 
   const handleJdUpload = (e) => {
@@ -55,7 +54,7 @@ function App() {
   }
 
   const validateWeightage = () => {
-    const total = weightage.skillMatching + weightage.semanticSimilarity + weightage.experience + weightage.education + weightage.projects + weightage.certifications + weightage.domainMatch + weightage.locationPreference + weightage.technicalSkillsCount
+    const total = Object.values(weightage).reduce((acc, val) => acc + val, 0)
     if (total !== 100) {
       setError(`Weightage must sum to 100%. Current total: ${total}%`)
       return false
@@ -75,9 +74,7 @@ function App() {
       return
     }
 
-    if (!validateWeightage()) {
-      return
-    }
+    if (!validateWeightage()) return
 
     setLoading(true)
     setError('')
@@ -85,79 +82,28 @@ function App() {
     setResults([])
 
     try {
-      // Upload JD
-      const jdFormData = new FormData()
-      jdFormData.append('file', jdFile)
-      
-      const jdResponse = await fetch('http://localhost:5001/upload_jd', {
-        method: 'POST',
-        body: jdFormData
-      })
-
-      if (!jdResponse.ok) {
-        throw new Error('Failed to upload JD')
-      }
-
-      // Upload Resumes
-      const resumeFormData = new FormData()
+      const formData = new FormData()
+      formData.append('jd_file', jdFile)
       resumeFiles.forEach(file => {
-        resumeFormData.append('files', file)
+        formData.append('resume_files', file)
       })
       
-      const resumeResponse = await fetch('http://localhost:5001/upload_resumes', {
-        method: 'POST',
-        body: resumeFormData
-      })
-
-      if (!resumeResponse.ok) {
-        throw new Error('Failed to upload resumes')
-      }
-
-      // Analyze resumes with custom weightage
-      const analyzeResponse = await fetch('http://localhost:5001/analyze_resumes', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          weightage: {
-            skillMatching: weightage.skillMatching,
-            semanticSimilarity: weightage.semanticSimilarity,
-            experience: weightage.experience,
-            education: weightage.education,
-            projects: weightage.projects,
-            certifications: weightage.certifications,
-            domainMatch: weightage.domainMatch,
-            locationPreference: weightage.locationPreference,
-            technicalSkillsCount: weightage.technicalSkillsCount
-          }
-        })
-      })
-
-      if (!analyzeResponse.ok) {
-        throw new Error('Failed to analyze resumes')
-      }
-
-      const data = await analyzeResponse.json()
+      // Send weights as JSON string
+      formData.append('weights', JSON.stringify(weightage))
       
-      // Recalculate final scores with custom weightage
-      const recalculatedResults = data.results.map(result => {
-        const skillWeight = weightage.skillMatching / 100
-        const semanticWeight = weightage.semanticSimilarity / 100
-        const experienceWeight = weightage.experience / 100
-        
-        const newFinalScore = (skillWeight * result.skill_matching_score + 
-                            semanticWeight * result.semantic_similarity + 
-                            experienceWeight * result.experience_score)
-        
-        return {
-          ...result,
-          final_score: round(newFinalScore, 3)
-        }
+      const response = await fetch('http://localhost:8000/api/score', {
+        method: 'POST',
+        body: formData
       })
 
-      setResults(recalculatedResults)
-      setSuccess(`Successfully analyzed ${data.total_resumes} resumes with custom weightage`)
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Failed to analyze resumes')
+      }
+
+      const data = await response.json()
+      setResults(data.data)
+      setSuccess(`Successfully analyzed ${data.data.length} resumes with Industry-Level NLP`)
 
     } catch (err) {
       setError(err.message || 'An error occurred during analysis')
@@ -167,7 +113,7 @@ function App() {
   }
 
   const getScoreClass = (score) => {
-    if (score >= 0.7) return 'score-high'
+    if (score >= 0.75) return 'score-high'
     if (score >= 0.5) return 'score-medium'
     return 'score-low'
   }
@@ -179,136 +125,16 @@ function App() {
     return 'rank-badge'
   }
 
-  const totalWeightage = weightage.skillMatching + weightage.semanticSimilarity + weightage.experience + weightage.education + weightage.projects + weightage.certifications + weightage.domainMatch + weightage.locationPreference + weightage.technicalSkillsCount
-
   return (
     <div className="app">
       <header className="header">
         <h1>AI-Based Resume Shortlisting</h1>
-        <p>Advanced AI-powered candidate ranking system for academic recruitment</p>
+        <p>Advanced Industry-Level NLP Pipeline for Academic Recruitment</p>
       </header>
 
       <main className="main">
         {error && <div className="error-message">⚠️ {error}</div>}
         {success && <div className="success-message">✅ {success}</div>}
-
-        {/* Weightage Configuration */}
-        <div className="upload-box" style={{marginBottom: '2rem'}}>
-          <h3>⚖️ Scoring Weightage Configuration</h3>
-          <div className="weightage-config">
-            <div className="weightage-item">
-              <label htmlFor="skill-matching">Skill Matching (%)</label>
-              <input
-                type="number"
-                id="skill-matching"
-                min="0"
-                max="100"
-                value={weightage.skillMatching}
-                onChange={(e) => handleWeightageChange('skillMatching', e.target.value)}
-                className="weightage-input"
-              />
-            </div>
-            <div className="weightage-item">
-              <label htmlFor="semantic-similarity">Semantic Similarity (%)</label>
-              <input
-                type="number"
-                id="semantic-similarity"
-                min="0"
-                max="100"
-                value={weightage.semanticSimilarity}
-                onChange={(e) => handleWeightageChange('semanticSimilarity', e.target.value)}
-                className="weightage-input"
-              />
-            </div>
-            <div className="weightage-item">
-              <label htmlFor="experience">Experience (%)</label>
-              <input
-                type="number"
-                id="experience"
-                min="0"
-                max="100"
-                value={weightage.experience}
-                onChange={(e) => handleWeightageChange('experience', e.target.value)}
-                className="weightage-input"
-              />
-            </div>
-            <div className="weightage-item">
-              <label htmlFor="education">Education (%)</label>
-              <input
-                type="number"
-                id="education"
-                min="0"
-                max="100"
-                value={weightage.education}
-                onChange={(e) => handleWeightageChange('education', e.target.value)}
-                className="weightage-input"
-              />
-            </div>
-            <div className="weightage-item">
-              <label htmlFor="projects">Projects (%)</label>
-              <input
-                type="number"
-                id="projects"
-                min="0"
-                max="100"
-                value={weightage.projects}
-                onChange={(e) => handleWeightageChange('projects', e.target.value)}
-                className="weightage-input"
-              />
-            </div>
-            <div className="weightage-item">
-              <label htmlFor="certifications">Certifications (%)</label>
-              <input
-                type="number"
-                id="certifications"
-                min="0"
-                max="100"
-                value={weightage.certifications}
-                onChange={(e) => handleWeightageChange('certifications', e.target.value)}
-                className="weightage-input"
-              />
-            </div>
-            <div className="weightage-item">
-              <label htmlFor="domainMatch">Domain Match (%)</label>
-              <input
-                type="number"
-                id="domainMatch"
-                min="0"
-                max="100"
-                value={weightage.domainMatch}
-                onChange={(e) => handleWeightageChange('domainMatch', e.target.value)}
-                className="weightage-input"
-              />
-            </div>
-            <div className="weightage-item">
-              <label htmlFor="locationPreference">Location Preference (%)</label>
-              <input
-                type="number"
-                id="locationPreference"
-                min="0"
-                max="100"
-                value={weightage.locationPreference}
-                onChange={(e) => handleWeightageChange('locationPreference', e.target.value)}
-                className="weightage-input"
-              />
-            </div>
-            <div className="weightage-item">
-              <label htmlFor="technicalSkillsCount">Technical Skills Count (%)</label>
-              <input
-                type="number"
-                id="technicalSkillsCount"
-                min="0"
-                max="100"
-                value={weightage.technicalSkillsCount}
-                onChange={(e) => handleWeightageChange('technicalSkillsCount', e.target.value)}
-                className="weightage-input"
-              />
-            </div>
-          </div>
-          <div className={`weightage-total ${totalWeightage === 100 ? 'valid' : 'invalid'}`}>
-            Total Weightage: {totalWeightage}% {totalWeightage === 100 ? '✅' : '❌ Must equal 100%'}
-          </div>
-        </div>
 
         <div className="upload-section">
           <div className="upload-box">
@@ -366,22 +192,94 @@ function App() {
           </div>
         </div>
 
+        <div className="weightage-section">
+          <h3>⚖️ Evaluation Weightage (%)</h3>
+          <div className="weightage-summary">
+            <p>Define how candidates are scored. Total must equal 100%.</p>
+          </div>
+          <div className="weightage-config">
+            <div className="weightage-item">
+              <label>Skill Match</label>
+              <input
+                type="number"
+                value={weightage.required_skills}
+                onChange={(e) => handleWeightageChange('required_skills', e.target.value)}
+                className="weightage-input"
+              />
+            </div>
+            <div className="weightage-item">
+              <label>Semantic Fit</label>
+              <input
+                type="number"
+                value={weightage.semantic}
+                onChange={(e) => handleWeightageChange('semantic', e.target.value)}
+                className="weightage-input"
+              />
+            </div>
+            <div className="weightage-item">
+              <label>Reranker</label>
+              <input
+                type="number"
+                value={weightage.reranker}
+                onChange={(e) => handleWeightageChange('reranker', e.target.value)}
+                className="weightage-input"
+              />
+            </div>
+            <div className="weightage-item">
+              <label>Experience</label>
+              <input
+                type="number"
+                value={weightage.experience}
+                onChange={(e) => handleWeightageChange('experience', e.target.value)}
+                className="weightage-input"
+              />
+            </div>
+            <div className="weightage-item">
+              <label>Education</label>
+              <input
+                type="number"
+                value={weightage.education}
+                onChange={(e) => handleWeightageChange('education', e.target.value)}
+                className="weightage-input"
+              />
+            </div>
+            <div className="weightage-item">
+              <label>Projects</label>
+              <input
+                type="number"
+                value={weightage.projects}
+                onChange={(e) => handleWeightageChange('projects', e.target.value)}
+                className="weightage-input"
+              />
+            </div>
+            <div className="weightage-item">
+              <label>Evidence</label>
+              <input
+                type="number"
+                value={weightage.evidence}
+                onChange={(e) => handleWeightageChange('evidence', e.target.value)}
+                className="weightage-input"
+              />
+            </div>
+          </div>
+          <div className={`weightage-total ${Object.values(weightage).reduce((a, b) => a + b, 0) === 100 ? 'valid' : 'invalid'}`}>
+            Total: {Object.values(weightage).reduce((a, b) => a + b, 0)}%
+          </div>
+        </div>
+
         <div className="run-section">
           <button
             onClick={handleRunAnalysis}
             disabled={loading}
             className="run-button"
           >
-            {loading ? '🔄 Processing...' : '🚀 Run Analysis'}
+            {loading ? '🔄 Extracting & Ranking...' : '🚀 Run Advanced Analysis'}
           </button>
         </div>
 
         {results.length > 0 && (
           <div className="results-section">
-            <h2>📊 Academic Ranking Results</h2>
-            <div className="weightage-summary">
-              <p>Applied Weightage: Skill Matching {weightage.skillMatching}% | Semantic Similarity {weightage.semanticSimilarity}% | Experience {weightage.experience}% | Education {weightage.education}% | Projects {weightage.projects}% | Certifications {weightage.certifications}% | Domain Match {weightage.domainMatch}% | Location {weightage.locationPreference}% | Technical Skills {weightage.technicalSkillsCount}%</p>
-            </div>
+            <h2>📊 Academic Ranking & AI Insights</h2>
             <div className="table-container">
               <table className="results-table">
                 <thead>
@@ -389,17 +287,13 @@ function App() {
                     <th>Rank</th>
                     <th>Candidate</th>
                     <th>Final Score</th>
+                    <th>AI Explanation</th>
                     <th>Skill Match</th>
-                    <th>Semantic Similarity</th>
+                    <th>Semantic Fit</th>
+                    <th>Reranker</th>
                     <th>Experience</th>
-                    <th>Years</th>
-                    <th>Domain</th>
-                    <th>Projects</th>
-                    <th>Certifications</th>
-                    <th>Domain Match</th>
                     <th>Education</th>
-                    <th>Location</th>
-                    <th>Tech Skills</th>
+                    <th>Projects</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -411,39 +305,30 @@ function App() {
                         </span>
                       </td>
                       <td>
-                        <strong>{result.filename.replace('.pdf', '').replace('.docx', '')}</strong>
+                        <strong>{result.name}</strong>
+                        <div className="summary-text">{result.semantic_summary}</div>
                       </td>
                       <td className={getScoreClass(result.final_score)}>
                         {(result.final_score * 100).toFixed(1)}%
                       </td>
-                      <td className={getScoreClass(result.skill_matching_score)}>
-                        {(result.skill_matching_score * 100).toFixed(1)}%
+                      <td className="explanation-cell">
+                        {result.explanation}
                       </td>
-                      <td className={getScoreClass(result.semantic_similarity)}>
-                        {(result.semantic_similarity * 100).toFixed(1)}%
+                      <td className={getScoreClass(result.required_skill_score)}>
+                        {(result.required_skill_score * 100).toFixed(1)}%
                       </td>
-                      <td className={getScoreClass(result.experience_score)}>
-                        {(result.experience_score * 100).toFixed(1)}%
+                      <td className={getScoreClass(result.semantic_score)}>
+                        {(result.semantic_score * 100).toFixed(1)}%
                       </td>
-                      <td>{result.experience_years} years</td>
-                      <td>{result.domain.join(', ')}</td>
-                      <td className={getScoreClass(result.project_score || 0)}>
-                        {(result.project_score || 0 * 100).toFixed(1)}%
+                      <td className={getScoreClass(result.reranker_score)}>
+                        {(result.reranker_score * 100).toFixed(1)}%
                       </td>
-                      <td className={getScoreClass(result.certification_score || 0)}>
-                        {(result.certification_score || 0 * 100).toFixed(1)}%
+                      <td>{result.experience_years} yrs</td>
+                      <td className={getScoreClass(result.education_score)}>
+                        {(result.education_score * 100).toFixed(1)}%
                       </td>
-                      <td className={getScoreClass(result.domain_match_score || 0)}>
-                        {(result.domain_match_score || 0 * 100).toFixed(1)}%
-                      </td>
-                      <td className={getScoreClass(result.education_score || 0)}>
-                        {(result.education_score || 0 * 100).toFixed(1)}%
-                      </td>
-                      <td className={getScoreClass(result.location_score || 0)}>
-                        {(result.location_score || 0 * 100).toFixed(1)}%
-                      </td>
-                      <td className={getScoreClass(result.tech_skills_score || 0)}>
-                        {(result.tech_skills_score || 0 * 100).toFixed(1)}%
+                      <td className={getScoreClass(result.project_score)}>
+                        {(result.project_score * 100).toFixed(1)}%
                       </td>
                     </tr>
                   ))}
@@ -452,6 +337,7 @@ function App() {
             </div>
           </div>
         )}
+
       </main>
     </div>
   )
